@@ -1,0 +1,9 @@
+server:
+  host: "127.0.0.1"
+  port: 8000
+
+# Missing llama section entirely
+
+qdrant:
+  host: "localhost"
+  port: 6333

@@ -1,0 +1,32 @@
+server:
+  host: "0.0.0.0"
+  port: 8000
+
+llama:
+  base_url: "http://localhost:8080"
+  embedding_model: "Qwen"
+  embedding_dim: 1024
+  reranker_model: "ggml-org/Qwen3-Reranker-0.6B-Q8_0-GGUF:Q8_0"
+  generation_model: "unsloth/DeepSeek-R1-Distill-Qwen-14B-GGUF:Q4_K_M"
+  batch_size: 32
+  timeout: 120
+
+qdrant:
+  host: "localhost"
+  port: 6333
+  collection_name: "petit_prince"
+  on_disk_payload: true
+  distance: "Cosine"
+
+ingestion:
+  source_file: "var/data/book.txt"
+  sentences_per_paragraph: 10
+
+retrieval:
+  top_k: 20
+  top_x: 5
+  relevance_threshold: 0.7
+
+logging:
+  level: "INFO"
+  format: "%(asctime)s | %(levelname)-8s | %(name)s:%(funcName)s:%(lineno)d | %(message)s"
