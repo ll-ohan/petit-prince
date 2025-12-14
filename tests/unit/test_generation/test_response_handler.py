@@ -17,6 +17,14 @@ class TestResponseHandler:
         assert response["choices"][0]["message"]["content"] == "Hello"
         assert response["usage"]["total_tokens"] == 15
 
+    def test_format_usage_calculation(self):
+        """Test correctness of total tokens calculation."""
+        metrics = RequestMetrics(prompt_tokens=100, completion_tokens=50)
+        assert metrics.total_tokens == 150
+        
+        openai_usage = metrics.to_openai_usage()
+        assert openai_usage["total_tokens"] == 150
+
     def test_format_extended_metrics(self):
         """Test inclusion of x_metrics."""
         handler = ResponseHandler()
@@ -42,6 +50,6 @@ class TestResponseHandler:
         async for chunk in handler.format_streaming_completion(mock_stream(), metrics):
             chunks.append(chunk)
 
-        assert len(chunks) >= 3 # Role + chunks + usage/done
+        assert len(chunks) >= 3 
         assert 'data: {"id":' in chunks[0]
         assert "data: [DONE]" in chunks[-1]

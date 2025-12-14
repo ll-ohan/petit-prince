@@ -3,7 +3,7 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 from src.generation.service import GenerationService
-from src.core.exceptions import RerankError
+from src.core.exceptions import RerankError, GenerationError
 from src.generation.response_handler import RequestMetrics
 
 @pytest.fixture
@@ -31,7 +31,6 @@ class TestGenerationService:
 
     async def test_process_query_nominal(self, service, service_mocks):
         """Test standard RAG flow."""
-        # Setup returns
         service_mocks["vectorstore"].search.return_value = [
             MagicMock(text="doc1", score=0.8)
         ]
@@ -45,8 +44,21 @@ class TestGenerationService:
         )
 
         assert len(docs) == 1
-        assert "doc1" in msgs[-1]["content"] # Context injected
+        assert "doc1" in msgs[-1]["content"]
         service_mocks["reranker"].rerank.assert_called_once()
+
+    async def test_process_query_no_search_results(self, service, service_mocks):
+        """Test flow stops if vector search returns nothing."""
+        service_mocks["vectorstore"].search.return_value = []
+        
+        msgs, docs = await service.process_query(
+            [{"role": "user", "content": "Q"}], RequestMetrics()
+        )
+        
+        assert len(docs) == 0
+        service_mocks["reranker"].rerank.assert_not_called()
+        # Message original conservé sans contexte
+        assert msgs[-1]["content"] == "Q"
 
     async def test_fallback_on_rerank_error(self, service, service_mocks):
         """Test fallback to vector search if reranker fails."""
@@ -59,6 +71,18 @@ class TestGenerationService:
             [{"role": "user", "content": "Q"}], RequestMetrics()
         )
 
-        # Should still have docs from vector search
         assert len(docs) == 1
-        assert docs[0].score == 0.8  # Original vector score
+        assert docs[0].score == 0.8
+
+    async def test_token_counting_failure(self, service, service_mocks):
+        """Test fallback estimation when token counting fails."""
+        service_mocks["vectorstore"].search.return_value = []
+        service_mocks["generator"].count_tokens.side_effect = GenerationError("Fail")
+        
+        metrics = RequestMetrics()
+        await service.process_query(
+            [{"role": "user", "content": "Short query"}], metrics
+        )
+        
+        # Should rely on len(text) // 4 estimation
+        assert metrics.prompt_tokens > 0

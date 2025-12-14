@@ -2,6 +2,7 @@
 
 import pytest
 import httpx
+import math
 from src.infrastructure.llama_client import LlamaClient
 from src.config.settings import LlamaConfig
 from src.core.exceptions import EmbeddingError, GenerationError, RerankError
@@ -48,6 +49,36 @@ class TestLlamaClient:
             await client.embed_batch(["test"])
         assert "dimension mismatch" in str(exc.value)
 
+    async def test_embed_api_timeout(self, client, httpx_mock):
+        """Test handling of API timeouts."""
+        # Simuler une exception de timeout sur toutes les tentatives
+        httpx_mock.add_exception(httpx.ReadTimeout("Timeout"))
+
+        with pytest.raises(httpx.ReadTimeout):
+            await client.embed_batch(["test"])
+
+    async def test_embed_api_500_error(self, client, httpx_mock):
+        """Test handling of internal server errors (retry then fail)."""
+        httpx_mock.add_response(
+            url="http://localhost:8080/v1/embeddings",
+            status_code=500,
+            text="Internal Server Error"
+        )
+
+        with pytest.raises(httpx.HTTPStatusError):
+            await client.embed_batch(["test"])
+
+    async def test_embed_nan_values(self, client, httpx_mock):
+        """Test rejection of embeddings containing NaN/Inf."""
+        httpx_mock.add_response(
+            url="http://localhost:8080/v1/embeddings",
+            json={"data": [{"embedding": [float('nan')] * 1024}]}
+        )
+
+        with pytest.raises(EmbeddingError) as exc:
+            await client.embed_batch(["test"])
+        assert "NaN or Inf" in str(exc.value)
+
     async def test_rerank_success(self, client, httpx_mock):
         """Test successful reranking."""
         httpx_mock.add_response(
@@ -78,6 +109,18 @@ class TestLlamaClient:
 
         response = await client.generate([{"role": "user", "content": "Hi"}])
         assert response == "Hello world"
+
+    async def test_generate_empty_response(self, client, httpx_mock):
+        """Test handling of empty content from LLM."""
+        httpx_mock.add_response(
+            url="http://localhost:8080/v1/chat/completions",
+            json={
+                "choices": [{"message": {"content": ""}}]
+            }
+        )
+
+        response = await client.generate([{"role": "user", "content": "Hi"}])
+        assert response == ""
 
     async def test_generate_stream_success(self, client, httpx_mock):
         """Test streaming generation."""

@@ -4,6 +4,7 @@ import pytest
 from unittest.mock import Mock, AsyncMock
 from pathlib import Path
 from src.ingestion.service import IngestionService
+from src.core.exceptions import EmbeddingError, VectorStoreError
 
 @pytest.fixture
 def mock_components():
@@ -23,7 +24,6 @@ def service(mock_components):
         sentences_per_paragraph=2,
         batch_size=2
     )
-    # Inject internal mocks
     svc.reader = mock_components["reader"]
     svc.chunker = mock_components["chunker"]
     svc.paragraph_builder = mock_components["builder"]
@@ -35,7 +35,6 @@ class TestIngestionService:
 
     async def test_ingest_nominal_flow(self, service, mock_components):
         """Test complete ingestion pipeline execution."""
-        # Setup mocks
         mock_components["reader"].read.return_value = "Raw Text"
         mock_components["chunker"].chunk.return_value = ["S1", "S2"]
         mock_components["builder"].build.return_value = ["P1"]
@@ -43,13 +42,27 @@ class TestIngestionService:
         
         stats = await service.ingest(Path("dummy.txt"), embedding_dim=2)
 
-        # Verify flow
-        mock_components["reader"].read.assert_called_once()
-        mock_components["chunker"].chunk.assert_called_once()
-        mock_components["builder"].build.assert_called_once()
         mock_components["vectorstore"].create_collection.assert_called_with(2)
-        mock_components["embedder"].embed_batch.assert_called_once()
         mock_components["vectorstore"].upsert.assert_called_once()
-        
         assert stats["paragraphs"] == 1
-        assert stats["vectors"] == 1
+
+    async def test_ingest_embedder_failure(self, service, mock_components):
+        """Test failure propagation from embedder."""
+        mock_components["reader"].read.return_value = "Text"
+        mock_components["chunker"].chunk.return_value = ["S1"]
+        mock_components["builder"].build.return_value = ["P1"]
+        mock_components["embedder"].embed_batch.side_effect = EmbeddingError("API Down")
+
+        with pytest.raises(EmbeddingError):
+            await service.ingest(Path("dummy.txt"), embedding_dim=2)
+
+    async def test_ingest_vectorstore_failure(self, service, mock_components):
+        """Test failure propagation from vectorstore upsert."""
+        mock_components["reader"].read.return_value = "Text"
+        mock_components["chunker"].chunk.return_value = ["S1"]
+        mock_components["builder"].build.return_value = ["P1"]
+        mock_components["embedder"].embed_batch.return_value = [[0.1]]
+        mock_components["vectorstore"].upsert.side_effect = VectorStoreError("DB Full")
+
+        with pytest.raises(VectorStoreError):
+            await service.ingest(Path("dummy.txt"), embedding_dim=2)

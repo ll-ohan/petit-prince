@@ -28,16 +28,23 @@ class TestQdrantRepository:
 
     async def test_create_collection_idempotency(self, repo):
         """Test that existing collection is deleted before creation."""
-        # Setup: Collection exists
         repo.client.get_collections.return_value = MagicMock(
             collections=[MagicMock(name="test_coll")]
         )
 
         await repo.create_collection(dimension=1024)
 
-        # Verify delete called then create called
         repo.client.delete_collection.assert_called_with("test_coll")
         repo.client.create_collection.assert_called_once()
+
+    async def test_create_collection_failure(self, repo):
+        """Test error handling when collection creation fails."""
+        repo.client.collection_exists.return_value = False
+        repo.client.create_collection.side_effect = Exception("API Error")
+
+        with pytest.raises(VectorStoreError) as exc:
+            await repo.create_collection(dimension=1024)
+        assert "Failed to create collection" in str(exc.value)
 
     async def test_upsert_success(self, repo):
         """Test successful upsert of vectors."""
@@ -70,3 +77,11 @@ class TestQdrantRepository:
         assert len(results) == 1
         assert results[0].text == "found"
         assert results[0].score == 0.95
+
+    async def test_search_connection_error(self, repo):
+        """Test handling of connection errors during search."""
+        repo.client.search.side_effect = Exception("Connection refused")
+
+        with pytest.raises(VectorStoreError) as exc:
+            await repo.search([0.1]*1024, top_k=1)
+        assert "Search failed" in str(exc.value)
