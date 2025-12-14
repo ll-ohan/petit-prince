@@ -6,7 +6,7 @@ from typing import Literal
 
 import httpx
 import yaml
-from pydantic import BaseModel, Field, HttpUrl, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from src.core.exceptions import ConfigurationError
@@ -15,20 +15,27 @@ from src.core.exceptions import ConfigurationError
 class LlamaConfig(BaseModel):
     """Llama.cpp server configuration."""
 
-    base_url: str = Field(description="Base URL of llama.cpp server")
+    embedding_url: str = Field(description="Base URL for embeddings service")
+    rerank_url: str = Field(description="Base URL for reranking service")
+    generation_url: str = Field(description="Base URL for generation service")
+
     embedding_model: str = Field(min_length=1, description="Model name for embeddings")
     embedding_dim: int = Field(gt=0, le=8192, description="Embedding vector dimension")
     reranker_model: str = Field(min_length=1, description="Model name for reranking")
     generation_model: str = Field(min_length=1, description="Model name for generation")
-    batch_size: int = Field(gt=0, le=512, default=32, description="Batch size for embeddings")
-    timeout: int = Field(gt=0, le=600, default=120, description="Request timeout in seconds")
+    batch_size: int = Field(
+        gt=0, le=512, default=32, description="Batch size for embeddings"
+    )
+    timeout: int = Field(
+        gt=0, le=600, default=120, description="Request timeout in seconds"
+    )
 
-    @field_validator("base_url")
+    @field_validator("embedding_url", "rerank_url", "generation_url")
     @classmethod
     def validate_url_format(cls, v: str) -> str:
         """Validate URL format."""
         if not v.startswith(("http://", "https://")):
-            raise ValueError(f"base_url must start with http:// or https://, got: {v}")
+            raise ValueError(f"URL must start with http:// or https://, got: {v}")
         return v.rstrip("/")
 
 
@@ -51,7 +58,9 @@ class QdrantConfig(BaseModel):
 class RetrievalConfig(BaseModel):
     """Retrieval and reranking configuration."""
 
-    top_k: int = Field(gt=0, le=1000, default=20, description="Initial vector search results")
+    top_k: int = Field(
+        gt=0, le=1000, default=20, description="Initial vector search results"
+    )
     top_x: int = Field(gt=0, le=100, default=5, description="Results after reranking")
     relevance_threshold: float = Field(
         ge=0.0, le=1.0, default=0.7, description="Threshold for high/moderate relevance"
@@ -97,7 +106,9 @@ class ServerConfig(BaseModel):
 class LoggingConfig(BaseModel):
     """Logging configuration."""
 
-    level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = Field(default="INFO")
+    level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = Field(
+        default="INFO"
+    )
     format: str = Field(
         default="%(asctime)s | %(levelname)-8s | %(name)s:%(funcName)s:%(lineno)d | %(message)s"
     )
@@ -122,43 +133,23 @@ class Settings(BaseSettings):
 
     @classmethod
     def from_yaml(cls, yaml_path: Path = Path("config.yml")) -> "Settings":
-        """Load settings from YAML file, with ENV overrides.
-
-        Args:
-            yaml_path: Path to YAML configuration file.
-
-        Returns:
-            Settings instance.
-
-        Raises:
-            ConfigurationError: If YAML is invalid or configuration fails validation.
-        """
+        """Load settings from YAML file, with ENV overrides."""
         try:
             if yaml_path.exists():
-                with open(yaml_path, "r", encoding="utf-8") as f:
+                with open(yaml_path, encoding="utf-8") as f:
                     yaml_data = yaml.safe_load(f) or {}
             else:
                 yaml_data = {}
 
             # Merge YAML with environment variables
-            # Pydantic BaseSettings will read env vars and override YAML values
-            # We need to temporarily set the yaml data as defaults
-
-            # Store original env to restore later if needed
-            original_env = os.environ.copy()
-
-            # Create a dict to hold merged values
             merged_data = {}
 
-            # Helper to merge nested configs
             def merge_nested(prefix: str, data: dict) -> dict:
                 result = data.copy()
                 for key, value in data.items():
                     env_key = f"{prefix}__{key}".upper()
                     if env_key in os.environ:
-                        # Parse env var value
                         env_value = os.environ[env_key]
-                        # Try to convert to appropriate type
                         if isinstance(value, int):
                             try:
                                 result[key] = int(env_value)
@@ -170,19 +161,24 @@ class Settings(BaseSettings):
                             except ValueError:
                                 result[key] = env_value
                         elif isinstance(value, bool):
-                            result[key] = env_value.lower() in ('true', '1', 'yes')
+                            result[key] = env_value.lower() in ("true", "1", "yes")
                         else:
                             result[key] = env_value
                 return result
 
-            # Apply env overrides to each section
-            for section in ['server', 'llama', 'qdrant', 'retrieval', 'ingestion', 'logging']:
+            for section in [
+                "server",
+                "llama",
+                "qdrant",
+                "retrieval",
+                "ingestion",
+                "logging",
+            ]:
                 if section in yaml_data:
                     merged_data[section] = merge_nested(section, yaml_data[section])
                 elif section in yaml_data:
                     merged_data[section] = yaml_data[section]
 
-            # Create settings with merged data
             return cls(**merged_data if merged_data else yaml_data)
 
         except yaml.YAMLError as e:
@@ -198,36 +194,32 @@ class Settings(BaseSettings):
 
 
 def validate_config_at_startup(config: Settings) -> None:
-    """Validate configuration and external dependencies at startup.
+    """Validate configuration and external dependencies at startup."""
+    errors: list = []
 
-    Args:
-        config: Settings instance to validate.
+    # Check connectivity for all 3 services
+    # We check /health or root, accepting 404 as "service exists
+    # but path not found" which is good enough for connectivity
+    urls_to_check = [
+        ("Embedding", config.llama.embedding_url),
+        ("Reranking", config.llama.rerank_url),
+        ("Generation", config.llama.generation_url),
+    ]
 
-    Raises:
-        ConfigurationError: If validation fails with detailed error context.
-    """
-    errors = []
+    for name, url in urls_to_check:
+        try:
+            httpx.get(f"{url}/health", timeout=5)
+            # 404 is acceptable (service reachable), connection error is not
+            pass
+        except httpx.RequestError as e:
+            import logging
 
-    # File existence already validated by Pydantic
-
-    # Service connectivity (optional check)
-    try:
-        response = httpx.get(f"{config.llama.base_url}/health", timeout=5)
-        if response.status_code not in (200, 404):  # 404 ok if no /health endpoint
-            errors.append(
-                f"llama.cpp at {config.llama.base_url} returned status {response.status_code}"
+            logging.getLogger(__name__).warning(
+                "Cannot reach %s service at %s: %s (this is OK if service starts later)",
+                name,
+                url,
+                e,
             )
-    except httpx.RequestError as e:
-        # Warning only - service might not be ready yet
-        import logging
-
-        logging.getLogger(__name__).warning(
-            "Cannot reach llama.cpp at %s: %s (this is OK if service starts later)",
-            config.llama.base_url,
-            e,
-        )
-
-    # Logical consistency (already validated by Pydantic model validators)
 
     if errors:
         raise ConfigurationError(

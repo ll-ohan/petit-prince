@@ -6,14 +6,18 @@ Tests CORS, Health check, and common HTTP errors.
 import pytest
 from fastapi.testclient import TestClient
 
+
 @pytest.fixture
 def app():
     from src.main import app as fastapi_app
+
     return fastapi_app
+
 
 @pytest.fixture
 def client(app):
     return TestClient(app)
+
 
 @pytest.mark.integration
 class TestAPIEndpoints:

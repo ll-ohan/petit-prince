@@ -191,7 +191,6 @@ class TestBatchedPerformance:
 
     def test_batched_memory_efficiency(self):
         """Test that batched() doesn't create unnecessary copies."""
-        import sys
 
         # Create list with known objects
         items = [object() for _ in range(100)]

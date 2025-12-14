@@ -1,12 +1,13 @@
 """Generator interface for text generation."""
 
-from typing import AsyncIterator, Protocol
+from collections.abc import AsyncIterator
+from typing import Any, Protocol
 
 
 class IGenerator(Protocol):
     """Protocol for text generation services."""
 
-    async def generate(self, messages: list[dict]) -> str:
+    async def generate(self, messages: list[dict[Any, Any]]) -> str:
         """Generate response from messages (blocking).
 
         Args:
@@ -20,7 +21,7 @@ class IGenerator(Protocol):
         """
         ...
 
-    async def generate_stream(self, messages: list[dict]) -> AsyncIterator[str]:
+    def generate_stream(self, messages: list[dict[Any, Any]]) -> AsyncIterator[str]:
         """Generate response from messages (streaming).
 
         Args:

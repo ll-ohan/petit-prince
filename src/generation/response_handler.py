@@ -4,8 +4,8 @@ import json
 import logging
 import time
 import uuid
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
-from typing import AsyncIterator
 
 logger = logging.getLogger(__name__)
 
@@ -129,7 +129,9 @@ class ResponseHandler:
                 "object": "chat.completion.chunk",
                 "created": created,
                 "model": self.MODEL_NAME,
-                "choices": [{"index": 0, "delta": {"role": "assistant"}, "finish_reason": None}],
+                "choices": [
+                    {"index": 0, "delta": {"role": "assistant"}, "finish_reason": None}
+                ],
             }
         )
 
@@ -141,7 +143,9 @@ class ResponseHandler:
                     "object": "chat.completion.chunk",
                     "created": created,
                     "model": self.MODEL_NAME,
-                    "choices": [{"index": 0, "delta": {"content": chunk}, "finish_reason": None}],
+                    "choices": [
+                        {"index": 0, "delta": {"content": chunk}, "finish_reason": None}
+                    ],
                 }
             )
 

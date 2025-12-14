@@ -67,7 +67,9 @@ class IngestionService:
         await self.vectorstore.create_collection(embedding_dim)
 
         # 5. Embed paragraphs in batches
-        logger.info("Embedding %d paragraphs in batches of %d", len(paragraphs), self.batch_size)
+        logger.info(
+            "Embedding %d paragraphs in batches of %d", len(paragraphs), self.batch_size
+        )
         all_vectors = []
 
         for batch_idx, batch in enumerate(batched(paragraphs, self.batch_size)):

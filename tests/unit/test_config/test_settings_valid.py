@@ -5,9 +5,7 @@ Tests the successful loading and merging of configuration from YAML files
 and environment variables, following the priority chain ENV > .env > .yml.
 """
 
-import os
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 import yaml
@@ -30,7 +28,9 @@ class TestLlamaConfig:
     def test_valid_llama_config(self):
         """Test creation of valid LlamaConfig."""
         config = LlamaConfig(
-            base_url="http://localhost:8080",
+            embedding_url="http://localhost:8080",
+            rerank_url="http://localhost:8081",
+            generation_url="http://localhost:8082",
             embedding_model="Qwen-Embedding",
             embedding_dim=1024,
             reranker_model="Qwen-Reranker",
@@ -39,39 +39,47 @@ class TestLlamaConfig:
             timeout=120,
         )
 
-        assert config.base_url == "http://localhost:8080"
+        assert config.embedding_url == "http://localhost:8080"
         assert config.embedding_dim == 1024
         assert config.batch_size == 32
         assert config.timeout == 120
 
     def test_url_trailing_slash_removed(self):
-        """Test that trailing slashes are removed from base_url."""
+        """Test that trailing slashes are removed from URLs."""
         config = LlamaConfig(
-            base_url="http://localhost:8080/",
+            embedding_url="http://localhost:8080/",
+            rerank_url="http://localhost:8081/",
+            generation_url="http://localhost:8082/",
             embedding_model="test",
             embedding_dim=768,
             reranker_model="test",
             generation_model="test",
         )
 
-        assert config.base_url == "http://localhost:8080"
+        assert config.embedding_url == "http://localhost:8080"
+        assert config.rerank_url == "http://localhost:8081"
+        assert config.generation_url == "http://localhost:8082"
 
     def test_https_url_accepted(self):
         """Test that HTTPS URLs are accepted."""
         config = LlamaConfig(
-            base_url="https://secure-server.com",
+            embedding_url="https://secure-server.com",
+            rerank_url="https://secure-server.com",
+            generation_url="https://secure-server.com",
             embedding_model="test",
             embedding_dim=768,
             reranker_model="test",
             generation_model="test",
         )
 
-        assert config.base_url == "https://secure-server.com"
+        assert config.embedding_url == "https://secure-server.com"
 
     def test_default_batch_size_and_timeout(self):
         """Test that default values are applied for optional fields."""
         config = LlamaConfig(
-            base_url="http://localhost:8080",
+            embedding_url="http://localhost:8080",
+            rerank_url="http://localhost:8080",
+            generation_url="http://localhost:8080",
             embedding_model="test",
             embedding_dim=768,
             reranker_model="test",
@@ -236,11 +244,12 @@ class TestSettingsFromYAML:
 
     def test_load_from_valid_yaml(self, config_yaml_file: Path, sample_text_file: Path):
         """Test loading settings from a valid YAML file."""
-        # Update YAML with valid source file
-        with open(config_yaml_file, "r", encoding="utf-8") as f:
+        # Update YAML with valid source file and new schema
+        with open(config_yaml_file, encoding="utf-8") as f:
             config_data = yaml.safe_load(f)
 
         config_data["ingestion"]["source_file"] = str(sample_text_file)
+        # Ensure it has the 3 separate URLs - this comes from fixture, which was updated
 
         with open(config_yaml_file, "w", encoding="utf-8") as f:
             yaml.dump(config_data, f)
@@ -251,9 +260,10 @@ class TestSettingsFromYAML:
         assert settings.llama.embedding_dim == 1024
         assert settings.qdrant.collection_name == "petit_prince_test"
         assert settings.retrieval.top_k == 20
+        assert settings.llama.embedding_url == "http://localhost:8080"
 
     def test_load_from_nonexistent_yaml_uses_defaults(self, temp_dir: Path):
-        """Test that loading from nonexistent YAML returns empty dict (requires all required fields)."""
+        """Test loading from nonexistent YAML (requires all required fields)."""
         nonexistent = temp_dir / "nonexistent.yml"
 
         # This should fail because required fields are missing
@@ -265,7 +275,7 @@ class TestSettingsFromYAML:
     ):
         """Test that environment variables override YAML values."""
         # Update YAML with valid source file
-        with open(config_yaml_file, "r", encoding="utf-8") as f:
+        with open(config_yaml_file, encoding="utf-8") as f:
             config_data = yaml.safe_load(f)
 
         config_data["ingestion"]["source_file"] = str(sample_text_file)
@@ -290,7 +300,9 @@ class TestSettingsFromYAML:
         """Test that partial YAML is merged with defaults."""
         partial_config = {
             "llama": {
-                "base_url": "http://test:8080",
+                "embedding_url": "http://test:8080",
+                "rerank_url": "http://test:8081",
+                "generation_url": "http://test:8082",
                 "embedding_model": "test-model",
                 "embedding_dim": 768,
                 "reranker_model": "test-rerank",
@@ -327,7 +339,9 @@ class TestSettingsIntegration:
         settings = Settings(
             server=ServerConfig(host="0.0.0.0", port=8000),
             llama=LlamaConfig(
-                base_url="http://localhost:8080",
+                embedding_url="http://localhost:8080",
+                rerank_url="http://localhost:8081",
+                generation_url="http://localhost:8082",
                 embedding_model="Qwen",
                 embedding_dim=1024,
                 reranker_model="Qwen-Rerank",

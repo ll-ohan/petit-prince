@@ -6,12 +6,13 @@ from contextlib import asynccontextmanager
 from fastapi import Depends, FastAPI
 
 from src.api.router import router
+from src.api.routes import chat, init
 from src.config.logging import setup_logging
 from src.config.settings import Settings, validate_config_at_startup
 from src.generation.service import GenerationService
-from src.ingestion.service import IngestionService
 from src.infrastructure.llama_client import LlamaClient
 from src.infrastructure.qdrant_client import QdrantRepository
+from src.ingestion.service import IngestionService
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +87,9 @@ async def lifespan(app: FastAPI):
     setup_logging(_settings.logging)
 
     logger.info("Configuration loaded successfully")
-    logger.debug("Llama base URL: %s", _settings.llama.base_url)
+    logger.debug("Llama LLM URL: %s", _settings.llama.generation_url)
+    logger.debug("Llama Embedding URL: %s", _settings.llama.embedding_url)
+    logger.debug("Llama Reranking URL: %s", _settings.llama.rerank_url)
     logger.debug("Qdrant host: %s:%d", _settings.qdrant.host, _settings.qdrant.port)
 
     # Validate configuration
@@ -124,6 +127,12 @@ app.dependency_overrides[LlamaClient] = get_llama_client
 app.dependency_overrides[QdrantRepository] = get_qdrant_client
 app.dependency_overrides[IngestionService] = get_ingestion_service
 app.dependency_overrides[GenerationService] = get_generation_service
+
+# Override route-specific dependencies
+app.dependency_overrides[init.get_settings] = get_settings
+app.dependency_overrides[init.get_ingestion_service] = get_ingestion_service
+app.dependency_overrides[chat.get_generation_service] = get_generation_service
+app.dependency_overrides[chat.get_llama_client] = get_llama_client
 
 # Include routes
 app.include_router(router)

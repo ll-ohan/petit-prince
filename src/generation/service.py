@@ -3,7 +3,7 @@
 import logging
 import time
 
-from src.core.exceptions import GenerationError, RetrievalError, RerankError
+from src.core.exceptions import GenerationError, RerankError
 from src.core.interfaces.embedder import IEmbedder
 from src.core.interfaces.generator import IGenerator
 from src.core.interfaces.reranker import IReranker
@@ -88,7 +88,9 @@ class GenerationService:
         start = time.perf_counter()
         try:
             documents_to_rerank = [r.text for r in search_results]
-            reranked = await self.reranker.rerank(query, documents_to_rerank, self.top_x)
+            reranked = await self.reranker.rerank(
+                query, documents_to_rerank, self.top_x
+            )
         except RerankError as e:
             # Fallback to vector search ranking
             logger.warning("Reranker failed, falling back to vector similarity: %s", e)
@@ -102,7 +104,9 @@ class GenerationService:
         metrics.rerank_ms = (time.perf_counter() - start) * 1000
         metrics.documents_after_rerank = len(reranked)
         metrics.relevance_scores = [d.score for d in reranked]
-        metrics.documents_above_threshold = sum(1 for d in reranked if d.score >= self.threshold)
+        metrics.documents_above_threshold = sum(
+            1 for d in reranked if d.score >= self.threshold
+        )
         metrics.threshold_used = self.threshold
 
         logger.info(

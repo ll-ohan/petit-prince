@@ -1,10 +1,13 @@
 """Unit tests for IngestionService."""
 
-import pytest
-from unittest.mock import Mock, AsyncMock
 from pathlib import Path
-from src.ingestion.service import IngestionService
+from unittest.mock import AsyncMock, Mock
+
+import pytest
+
 from src.core.exceptions import EmbeddingError, VectorStoreError
+from src.ingestion.service import IngestionService
+
 
 @pytest.fixture
 def mock_components():
@@ -13,8 +16,9 @@ def mock_components():
         "vectorstore": AsyncMock(),
         "reader": Mock(),
         "chunker": Mock(),
-        "builder": Mock()
+        "builder": Mock(),
     }
+
 
 @pytest.fixture
 def service(mock_components):
@@ -22,12 +26,13 @@ def service(mock_components):
         embedder=mock_components["embedder"],
         vectorstore=mock_components["vectorstore"],
         sentences_per_paragraph=2,
-        batch_size=2
+        batch_size=2,
     )
     svc.reader = mock_components["reader"]
     svc.chunker = mock_components["chunker"]
     svc.paragraph_builder = mock_components["builder"]
     return svc
+
 
 @pytest.mark.unit
 @pytest.mark.asyncio
@@ -39,7 +44,7 @@ class TestIngestionService:
         mock_components["chunker"].chunk.return_value = ["S1", "S2"]
         mock_components["builder"].build.return_value = ["P1"]
         mock_components["embedder"].embed_batch.return_value = [[0.1, 0.2]]
-        
+
         stats = await service.ingest(Path("dummy.txt"), embedding_dim=2)
 
         mock_components["vectorstore"].create_collection.assert_called_with(2)

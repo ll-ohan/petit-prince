@@ -49,7 +49,10 @@ class TestTextReaderNominalCases:
 
     def test_read_french_accents(self, temp_dir: Path):
         """Test reading French text with accented characters."""
-        french_text = "Le Petit Prince habitait une planète très éloignée. Il était très attaché à sa rose."
+        french_text = (
+            "Le Petit Prince habitait une planète très éloignée. "
+            "Il était très attaché à sa rose."
+        )
         file_path = temp_dir / "french.txt"
         file_path.write_text(french_text, encoding="utf-8")
 
@@ -163,7 +166,7 @@ class TestTextReaderLogging:
         reader = TextReader()
 
         with caplog.at_level("INFO"):
-            content = reader.read(sample_text_file)
+            reader.read(sample_text_file)
 
         assert "Read" in caplog.text
         assert str(sample_text_file) in caplog.text
@@ -174,7 +177,7 @@ class TestTextReaderLogging:
         reader = TextReader()
 
         with caplog.at_level("WARNING"):
-            content = reader.read(invalid_encoding_file)
+            reader.read(invalid_encoding_file)
 
         # Should warn when using non-UTF-8 encoding
         assert "fallback" in caplog.text.lower() or "latin" in caplog.text.lower()

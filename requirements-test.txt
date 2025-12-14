@@ -10,7 +10,7 @@ pytest-httpx>=0.30.0
 respx>=0.21.0
 
 # Performance Testing
-pytest-benchmark>=4.0.0
+pytest-benchmark>=5.2.3
 
 # Code Quality & Analysis
 black>=24.0.0
@@ -20,7 +20,6 @@ pylint>=3.0.0
 
 # Type Stubs
 types-PyYAML>=6.0.0
-types-python-dotenv>=1.0.0
 
 # Test Fixtures & Factories
 faker>=22.0.0

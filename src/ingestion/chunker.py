@@ -3,7 +3,7 @@
 import logging
 import re
 
-import pysbd
+import pysbd  # type: ignore[import-untyped]
 
 from src.core.exceptions import IngestionError
 
@@ -14,6 +14,7 @@ class SentenceChunker:
     """ML-based sentence boundary detection with noise filtering."""
 
     # Patterns to filter out as non-sentences
+    # Note: These are applied to individual lines/segments before full text merging
     NOISE_PATTERNS = [
         re.compile(r"^Chapitre\s+[IVXLCDM]+\.?$", re.IGNORECASE),
         re.compile(r"^\d+\.?$"),
@@ -30,6 +31,11 @@ class SentenceChunker:
 
     def chunk(self, text: str) -> list[str]:
         """Split text into sentences with noise filtering.
+        
+        Strategy:
+        1. Split by lines to identify and remove "structural noise" (headers, isolated numbers).
+        2. Merge remaining lines to fix broken sentences (mixed newlines).
+        3. Segment the merged text into proper sentences.
 
         Args:
             text: Input text to chunk.
@@ -43,43 +49,57 @@ class SentenceChunker:
         if not text or not text.strip():
             return []
 
-        # Segment into sentences
-        raw_sentences = self.segmenter.segment(text)
+        # Step 1: Filter structural noise line by line
+        lines = text.splitlines()
+        cleaned_lines = []
+        
+        filtered_count = 0
+        for line in lines:
+            stripped = line.strip()
+            if not stripped:
+                continue
+                
+            # Check for noise patterns on the isolated line
+            if any(pattern.match(stripped) for pattern in self.NOISE_PATTERNS):
+                filtered_count += 1
+                logger.debug("Filtered noise line: %s", stripped[:50])
+                continue
+                
+            cleaned_lines.append(stripped)
 
-        # Filter noise and clean
+        if not cleaned_lines and filtered_count > 0:
+             raise IngestionError(
+                "No valid text extracted from source (only noise found)",
+                context={"original_line_count": len(lines)}
+            )
+        
+        if not cleaned_lines:
+            return []
+
+        # Step 2: Merge text to handle sentences broken by newlines
+        merged_text = " ".join(cleaned_lines)
+
+        # Step 3: Segment into sentences
+        raw_sentences = self.segmenter.segment(merged_text)
+
+        # Step 4: Final cleanup
         sentences = []
         for sentence in raw_sentences:
             cleaned = sentence.strip()
-
-            # Skip empty
-            if not cleaned:
-                continue
-
-            # Skip noise patterns
-            if any(pattern.match(cleaned) for pattern in self.NOISE_PATTERNS):
-                logger.debug("Filtered noise: %s", cleaned[:50])
-                continue
-
-            # Warn about very long sentences (potential parsing issue)
-            if len(cleaned) > 1000:
-                logger.warning(
-                    "Very long sentence detected (%d chars): %s...",
-                    len(cleaned),
-                    cleaned[:100],
-                )
-
-            sentences.append(cleaned)
-
-        if not sentences:
-            raise IngestionError(
-                "No valid sentences extracted from source text (only noise found)",
-                context={"raw_sentence_count": len(raw_sentences)},
-            )
+            if cleaned:
+                # Optional: Check very long sentences
+                if len(cleaned) > 1000:
+                    logger.warning(
+                        "Very long sentence detected (%d chars): %s...",
+                        len(cleaned),
+                        cleaned[:100],
+                    )
+                sentences.append(cleaned)
 
         logger.debug(
-            "Chunked into %d sentences (filtered %d noise items)",
+            "Chunked into %d sentences (filtered %d noise lines)",
             len(sentences),
-            len(raw_sentences) - len(sentences),
+            filtered_count,
         )
 
         return sentences

@@ -17,11 +17,22 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+# Dependency placeholders - these are overridden in main.py
+def get_generation_service() -> GenerationService:
+    """Get generation service (placeholder)."""
+    raise RuntimeError("Dependency not initialized")
+
+
+def get_llama_client() -> LlamaClient:
+    """Get Llama client (placeholder)."""
+    raise RuntimeError("Dependency not initialized")
+
+
 @router.post("/api/v1/chat/completions", tags=["chat"])
 async def chat_completion(
     request: ChatRequest,
-    generation_service: GenerationService = Depends(),
-    llama_client: LlamaClient = Depends(),
+    generation_service: GenerationService = Depends(get_generation_service),
+    llama_client: LlamaClient = Depends(get_llama_client),
     x_include_metrics: str | None = Header(None),
 ):
     """OpenAI-compatible chat completion endpoint.
@@ -38,7 +49,9 @@ async def chat_completion(
     Raises:
         HTTPException: If generation fails.
     """
-    include_extended = x_include_metrics and x_include_metrics.lower() == "true"
+    include_extended: bool = (
+        x_include_metrics is not None and x_include_metrics.lower() == "true"
+    )
     metrics = RequestMetrics()
     response_handler = ResponseHandler()
 
@@ -59,7 +72,9 @@ async def chat_completion(
         messages = [{"role": m.role, "content": m.content} for m in request.messages]
 
         # Process query through RAG pipeline
-        final_messages, reranked_docs = await generation_service.process_query(messages, metrics)
+        final_messages, reranked_docs = await generation_service.process_query(
+            messages, metrics
+        )
 
         # Generate response
         if request.stream:
@@ -102,7 +117,9 @@ async def chat_completion(
                 logger.warning("Token counting failed for completion, using estimate")
                 metrics.completion_tokens = len(content) // 4
 
-            return response_handler.format_completion(content, metrics, include_extended)
+            return response_handler.format_completion(
+                content, metrics, include_extended
+            )
 
     except RetrievalError as e:
         logger.error("Retrieval failed: %s", e)

@@ -11,7 +11,8 @@ logger = logging.getLogger(__name__)
 class TextReader:
     """Read text files with encoding fallback."""
 
-    ENCODINGS = ["utf-8", "utf-8-sig", "latin-1", "cp1252"]
+    # utf-8-sig is prioritized because it handles UTF-8 with AND without BOM correctly.
+    ENCODINGS = ["utf-8-sig", "latin-1", "cp1252"]
 
     def read(self, file_path: Path) -> str:
         """Read text file with automatic encoding detection.
@@ -36,8 +37,16 @@ class TextReader:
 
         for encoding in self.ENCODINGS:
             try:
-                with open(file_path, "r", encoding=encoding) as f:
-                    content = f.read()
+                with open(file_path, encoding=encoding) as f:
+                    temp_content = f.read()
+
+                # Heuristic: Valid text files should not contain null bytes.
+                # This catches binary files that might otherwise be "successfully"
+                # decoded by permissive encodings like latin-1.
+                if "\0" in temp_content:
+                    continue
+
+                content = temp_content
                 used_encoding = encoding
                 break
             except UnicodeDecodeError:
@@ -46,7 +55,10 @@ class TextReader:
         if content is None:
             raise IngestionError(
                 f"Could not decode file with any supported encoding: {self.ENCODINGS}",
-                context={"file_path": str(file_path), "tried_encodings": self.ENCODINGS},
+                context={
+                    "file_path": str(file_path),
+                    "tried_encodings": self.ENCODINGS,
+                },
             )
 
         if not content.strip():
@@ -55,9 +67,12 @@ class TextReader:
                 context={"file_path": str(file_path)},
             )
 
-        if used_encoding != "utf-8":
+        # Accept both utf-8 and utf-8-sig as standard encodings
+        if used_encoding not in ["utf-8", "utf-8-sig"]:
             logger.warning(
-                "File %s read with fallback encoding: %s (not UTF-8)", file_path, used_encoding
+                "File %s read with fallback encoding: %s (not UTF-8)",
+                file_path,
+                used_encoding,
             )
 
         logger.info(

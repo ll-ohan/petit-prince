@@ -156,15 +156,18 @@ class QdrantRepository:
             VectorStoreError: If search fails.
         """
         try:
-            results = await self.client.search(
+            results = await self.client.query_points(
                 collection_name=self.collection_name,
-                query_vector=query_vector,
+                query=query_vector,
                 limit=top_k,
                 with_payload=True,
             )
 
             search_results = []
-            for hit in results:
+            for hit in results.points:
+                if hit.payload is None:
+                    logger.warning("Result point has no payload, skipping")
+                    continue
                 search_results.append(
                     SearchResult(
                         text=hit.payload["text"],

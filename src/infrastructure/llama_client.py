@@ -3,7 +3,7 @@
 import asyncio
 import logging
 import math
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
 
 import httpx
 
@@ -24,9 +24,8 @@ class LlamaClient:
             config: Llama configuration.
         """
         self.config = config
-        self.client = httpx.AsyncClient(
-            base_url=config.base_url, timeout=config.timeout, follow_redirects=True
-        )
+        # We don't set base_url here anymore as we have 3 different URLs
+        self.client = httpx.AsyncClient(timeout=config.timeout, follow_redirects=True)
 
     async def close(self) -> None:
         """Close HTTP client."""
@@ -48,10 +47,15 @@ class LlamaClient:
             return []
 
         try:
+            url = f"{self.config.embedding_url}/v1/embeddings"
             response = await self._retry_request(
                 "POST",
-                "/v1/embeddings",
-                json={"model": self.config.embedding_model, "input": texts, "encoding_format": "float"},
+                url,
+                json={
+                    "model": self.config.embedding_model,
+                    "input": texts,
+                    "encoding_format": "float",
+                },
             )
 
             data = response.json()
@@ -61,8 +65,13 @@ class LlamaClient:
             for idx, emb in enumerate(embeddings):
                 if len(emb) != self.config.embedding_dim:
                     raise EmbeddingError(
-                        f"Embedding dimension mismatch: expected {self.config.embedding_dim}, got {len(emb)}",
-                        context={"batch_index": idx, "expected": self.config.embedding_dim, "actual": len(emb)},
+                        f"Embedding dimension mismatch: "
+                        f"expected {self.config.embedding_dim}, got {len(emb)}",
+                        context={
+                            "batch_index": idx,
+                            "expected": self.config.embedding_dim,
+                            "actual": len(emb),
+                        },
                     )
 
                 # Validate values
@@ -90,7 +99,7 @@ class LlamaClient:
                 f"Embedding batch failed: {type(e).__name__}",
                 context={
                     "batch_size": len(texts),
-                    "endpoint": f"{self.config.base_url}/v1/embeddings",
+                    "endpoint": f"{self.config.embedding_url}/v1/embeddings",
                 },
             ) from e
 
@@ -107,11 +116,15 @@ class LlamaClient:
             EmbeddingError: If embedding fails.
         """
         # Add instruction for better retrieval
-        instructed_query = f"Instruct: Given a query, retrieve relevant passages\nQuery: {query}"
+        instructed_query = (
+            f"Instruct: Given a query, retrieve relevant passages\nQuery: {query}"
+        )
         embeddings = await self.embed_batch([instructed_query])
         return embeddings[0]
 
-    async def rerank(self, query: str, documents: list[str], top_n: int) -> list[RankedDocument]:
+    async def rerank(
+        self, query: str, documents: list[str], top_n: int
+    ) -> list[RankedDocument]:
         """Rerank documents by relevance.
 
         Args:
@@ -129,9 +142,10 @@ class LlamaClient:
             return []
 
         try:
+            url = f"{self.config.rerank_url}/v1/rerank"
             response = await self._retry_request(
                 "POST",
-                "/v1/rerank",
+                url,
                 json={
                     "model": self.config.reranker_model,
                     "query": query,
@@ -153,7 +167,9 @@ class LlamaClient:
                     )
                 )
 
-            logger.debug("Reranked %d documents, returned top %d", len(documents), len(ranked))
+            logger.debug(
+                "Reranked %d documents, returned top %d", len(documents), len(ranked)
+            )
             return ranked
 
         except httpx.HTTPStatusError as e:
@@ -168,7 +184,7 @@ class LlamaClient:
         except httpx.RequestError as e:
             raise RerankError(
                 f"Reranking failed: {type(e).__name__}",
-                context={"endpoint": f"{self.config.base_url}/v1/rerank"},
+                context={"endpoint": f"{self.config.rerank_url}/v1/rerank"},
             ) from e
 
     async def generate(self, messages: list[dict]) -> str:
@@ -184,9 +200,10 @@ class LlamaClient:
             GenerationError: If generation fails.
         """
         try:
+            url = f"{self.config.generation_url}/v1/chat/completions"
             response = await self._retry_request(
                 "POST",
-                "/v1/chat/completions",
+                url,
                 json={
                     "model": self.config.generation_model,
                     "messages": messages,
@@ -208,7 +225,9 @@ class LlamaClient:
         except httpx.RequestError as e:
             raise GenerationError(
                 f"Generation failed: {type(e).__name__}",
-                context={"endpoint": f"{self.config.base_url}/v1/chat/completions"},
+                context={
+                    "endpoint": f"{self.config.generation_url}/v1/chat/completions"
+                },
             ) from e
 
     async def generate_stream(self, messages: list[dict]) -> AsyncIterator[str]:
@@ -224,9 +243,10 @@ class LlamaClient:
             GenerationError: If generation fails.
         """
         try:
+            url = f"{self.config.generation_url}/v1/chat/completions"
             async with self.client.stream(
                 "POST",
-                "/v1/chat/completions",
+                url,
                 json={
                     "model": self.config.generation_model,
                     "messages": messages,
@@ -271,9 +291,8 @@ class LlamaClient:
             GenerationError: If tokenization fails.
         """
         try:
-            response = await self._retry_request(
-                "POST", "/tokenize", json={"content": text}
-            )
+            url = f"{self.config.generation_url}/tokenize"
+            response = await self._retry_request("POST", url, json={"content": text})
 
             data = response.json()
             return len(data["tokens"])
@@ -304,7 +323,7 @@ class LlamaClient:
             httpx.HTTPStatusError: If request fails after retries.
             httpx.RequestError: If network error persists.
         """
-        last_exception = None
+        last_exception: Exception | None = None
 
         for attempt in range(1, max_attempts + 1):
             try:
@@ -346,4 +365,7 @@ class LlamaClient:
                 else:
                     raise
 
-        raise last_exception
+        # This should never be reached due to raises in exception handlers
+        if last_exception is not None:
+            raise last_exception
+        raise RuntimeError(f"Unexpected state in retry logic for {method} {url}")

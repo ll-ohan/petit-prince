@@ -14,10 +14,21 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+# Dependency placeholders - these are overridden in main.py
+def get_settings() -> Settings:
+    """Get settings (placeholder)."""
+    raise RuntimeError("Dependency not initialized")
+
+
+def get_ingestion_service() -> IngestionService:
+    """Get ingestion service (placeholder)."""
+    raise RuntimeError("Dependency not initialized")
+
+
 @router.post("/api/init", response_model=InitResponse, tags=["initialization"])
 async def initialize_index(
-    settings: Settings = Depends(),
-    ingestion_service: IngestionService = Depends(),
+    settings: Settings = Depends(get_settings),
+    ingestion_service: IngestionService = Depends(get_ingestion_service),
 ) -> InitResponse:
     """Destroy existing collection and re-index source file.
 

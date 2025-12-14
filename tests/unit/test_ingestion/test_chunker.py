@@ -7,7 +7,6 @@ roman numerals, and handling of French text specifics (dialogue, ellipsis).
 
 import pytest
 
-from src.core.exceptions import IngestionError
 from src.ingestion.chunker import SentenceChunker
 
 
@@ -58,7 +57,10 @@ class TestSentenceChunkerNominal:
         # Should be 1 sentence (ellipsis is continuation)
         # pysbd may segment this, so we check it's handled gracefully
         assert len(sentences) >= 1
-        assert any("réfléchit" in s and "comprit" in s for s in sentences) or len(sentences) == 2
+        assert (
+            any("réfléchit" in s and "comprit" in s for s in sentences)
+            or len(sentences) == 2
+        )
 
     def test_chunk_preserves_accents(self):
         """Test that French accents are preserved."""
@@ -210,6 +212,16 @@ class TestSentenceChunkerEdgeCases:
         assert len(sentences) == 1
         assert "planète" in sentences[0]
 
+    def test_mixed_newline_handling(self):
+        """Test le nettoyage des sauts de ligne intempestifs."""
+        text = "Le Petit Prince\nhabitait une\nplanète."
+        chunker = SentenceChunker(language="fr")
+        chunks = chunker.chunk(text)
+        # Idéalement, pysbd ou votre nettoyeur doit recoller ou gérer proprement
+        assert len(chunks) == 1
+        # Vérifier que les \n sont gérés (soit gardés, soit remplacés par espace)
+        assert "habitait" in chunks[0]
+
 
 @pytest.mark.unit
 class TestSentenceChunkerLanguageSupport:
@@ -237,7 +249,7 @@ class TestSentenceChunkerLanguageSupport:
     def test_chunk_handles_abbreviations(self):
         """Test handling of French abbreviations."""
         chunker = SentenceChunker(language="fr")
-        text = "Le Dr. Martin dit: 'C'est bien.' Il était content."
+        text = "Mme. Martin dit: 'C'est bien.' Pr. Thomas était content."
 
         sentences = chunker.chunk(text)
 

@@ -29,7 +29,9 @@ class TestLlamaConfigInvalid:
         """Test that invalid URL format raises ValidationError."""
         with pytest.raises(ValidationError) as exc_info:
             LlamaConfig(
-                base_url="not-a-url",
+                embedding_url="not-a-url",
+                rerank_url="http://localhost:8080",
+                generation_url="http://localhost:8080",
                 embedding_model="test",
                 embedding_dim=768,
                 reranker_model="test",
@@ -37,13 +39,15 @@ class TestLlamaConfigInvalid:
             )
 
         error_msg = str(exc_info.value)
-        assert "base_url must start with http://" in error_msg or "https://" in error_msg
+        assert "must start with http://" in error_msg or "https://" in error_msg
 
     def test_ftp_url_rejected(self):
         """Test that non-HTTP protocols are rejected."""
         with pytest.raises(ValidationError) as exc_info:
             LlamaConfig(
-                base_url="ftp://server.com",
+                embedding_url="ftp://server.com",
+                rerank_url="http://localhost:8080",
+                generation_url="http://localhost:8080",
                 embedding_model="test",
                 embedding_dim=768,
                 reranker_model="test",
@@ -66,7 +70,9 @@ class TestLlamaConfigInvalid:
         """Test that invalid embedding dimensions are rejected."""
         with pytest.raises(ValidationError) as exc_info:
             LlamaConfig(
-                base_url="http://localhost:8080",
+                embedding_url="http://localhost:8080",
+                rerank_url="http://localhost:8080",
+                generation_url="http://localhost:8080",
                 embedding_model="test",
                 embedding_dim=dim,
                 reranker_model="test",
@@ -88,7 +94,9 @@ class TestLlamaConfigInvalid:
         """Test that invalid batch sizes are rejected."""
         with pytest.raises(ValidationError) as exc_info:
             LlamaConfig(
-                base_url="http://localhost:8080",
+                embedding_url="http://localhost:8080",
+                rerank_url="http://localhost:8080",
+                generation_url="http://localhost:8080",
                 embedding_model="test",
                 embedding_dim=768,
                 reranker_model="test",
@@ -111,7 +119,9 @@ class TestLlamaConfigInvalid:
         """Test that invalid timeouts are rejected."""
         with pytest.raises(ValidationError) as exc_info:
             LlamaConfig(
-                base_url="http://localhost:8080",
+                embedding_url="http://localhost:8080",
+                rerank_url="http://localhost:8080",
+                generation_url="http://localhost:8080",
                 embedding_model="test",
                 embedding_dim=768,
                 reranker_model="test",
@@ -125,7 +135,9 @@ class TestLlamaConfigInvalid:
         """Test that empty model names are rejected."""
         with pytest.raises(ValidationError) as exc_info:
             LlamaConfig(
-                base_url="http://localhost:8080",
+                embedding_url="http://localhost:8080",
+                rerank_url="http://localhost:8080",
+                generation_url="http://localhost:8080",
                 embedding_model="",
                 embedding_dim=768,
                 reranker_model="test",
@@ -344,7 +356,9 @@ class TestSettingsFromYAMLInvalid:
         invalid_config = {
             "server": {"host": "0.0.0.0", "port": "not-a-number"},  # Invalid type
             "llama": {
-                "base_url": "http://localhost:8080",
+                "embedding_url": "http://localhost:8080",
+                "rerank_url": "http://localhost:8080",
+                "generation_url": "http://localhost:8080",
                 "embedding_model": "test",
                 "embedding_dim": "also-not-a-number",  # Invalid type
                 "reranker_model": "test",
@@ -369,7 +383,9 @@ class TestSettingsFromYAMLInvalid:
 
         config = {
             "llama": {
-                "base_url": "http://localhost:8080",
+                "embedding_url": "http://localhost:8080",
+                "rerank_url": "http://localhost:8080",
+                "generation_url": "http://localhost:8080",
                 "embedding_model": "test",
                 "embedding_dim": 768,
                 "reranker_model": "test",
@@ -390,7 +406,10 @@ class TestSettingsFromYAMLInvalid:
             Settings.from_yaml(yaml_path)
 
         error_msg = str(exc_info.value)
-        assert "Configuration validation failed" in error_msg or "does not exist" in error_msg
+        assert (
+            "Configuration validation failed" in error_msg
+            or "does not exist" in error_msg
+        )
 
 
 @pytest.mark.unit
@@ -401,7 +420,9 @@ class TestConfigurationEdgeCases:
     def test_max_embedding_dim_boundary(self):
         """Test that embedding_dim=8192 is accepted (boundary)."""
         config = LlamaConfig(
-            base_url="http://localhost:8080",
+            embedding_url="http://localhost:8080",
+            rerank_url="http://localhost:8080",
+            generation_url="http://localhost:8080",
             embedding_model="test",
             embedding_dim=8192,  # Maximum allowed
             reranker_model="test",
@@ -413,7 +434,9 @@ class TestConfigurationEdgeCases:
     def test_min_embedding_dim_boundary(self):
         """Test that embedding_dim=1 is accepted (boundary)."""
         config = LlamaConfig(
-            base_url="http://localhost:8080",
+            embedding_url="http://localhost:8080",
+            rerank_url="http://localhost:8080",
+            generation_url="http://localhost:8080",
             embedding_model="test",
             embedding_dim=1,  # Minimum allowed
             reranker_model="test",

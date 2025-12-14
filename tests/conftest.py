@@ -7,8 +7,8 @@ for all test suites in the Le Petit Prince RAG project.
 
 import asyncio
 import tempfile
+from collections.abc import Generator
 from pathlib import Path
-from typing import AsyncGenerator, Generator
 from unittest.mock import AsyncMock, MagicMock
 
 import httpx
@@ -127,10 +127,7 @@ def valid_config_dict() -> dict:
         Complete config matching config.yml schema.
     """
     return {
-        "server": {
-            "host": "0.0.0.0",
-            "port": 8000
-        },
+        "server": {"host": "0.0.0.0", "port": 8000},
         "llama": {
             "embedding_url": "http://localhost:8080",
             "embedding_model": "Qwen-Embedding",
@@ -140,28 +137,27 @@ def valid_config_dict() -> dict:
             "generation_url": "http://localhost:8082",
             "generation_model": "DeepSeek-R1",
             "batch_size": 32,
-            "timeout": 120
+            "timeout": 120,
         },
         "qdrant": {
             "host": "localhost",
             "port": 6333,
             "collection_name": "petit_prince_test",
             "on_disk_payload": True,
-            "distance": "Cosine"
+            "distance": "Cosine",
         },
         "ingestion": {
             "source_file": "var/data/LePetitPrince.txt",
-            "sentences_per_paragraph": 10
+            "sentences_per_paragraph": 10,
         },
-        "retrieval": {
-            "top_k": 20,
-            "top_x": 5,
-            "relevance_threshold": 0.7
-        },
+        "retrieval": {"top_k": 20, "top_x": 5, "relevance_threshold": 0.7},
         "logging": {
             "level": "INFO",
-            "format": "%(asctime)s | %(levelname)-8s | %(name)s:%(funcName)s:%(lineno)d | %(message)s"
-        }
+            "format": (
+                "%(asctime)s | %(levelname)-8s | "
+                "%(name)s:%(funcName)s:%(lineno)d | %(message)s"
+            ),
+        },
     }
 
 
@@ -196,13 +192,13 @@ def sample_sentences() -> list[str]:
         "Le Petit Prince habitait une planète.",
         "Il avait besoin d'un ami.",
         "Un jour, il rencontra un renard.",
-        "Le renard lui dit: \"Apprivoise-moi.\"",
+        'Le renard lui dit: "Apprivoise-moi."',
         "Le petit prince ne comprenait pas.",
-        "\"Qu'est-ce que signifie apprivoiser?\" demanda-t-il.",
-        "\"C'est créer des liens,\" répondit le renard.",
-        "\"Tu deviens responsable de ce que tu as apprivoisé.\"",
+        '"Qu\'est-ce que signifie apprivoiser?" demanda-t-il.',
+        '"C\'est créer des liens," répondit le renard.',
+        '"Tu deviens responsable de ce que tu as apprivoisé."',
         "Le petit prince réfléchit longuement.",
-        "Il comprit la leçon du renard."
+        "Il comprit la leçon du renard.",
     ]
 
 
@@ -212,12 +208,10 @@ def sample_paragraphs() -> list[str]:
     return [
         "Le Petit Prince habitait une planète à peine plus grande que lui. "
         "Il avait besoin d'un ami. Un jour, il rencontra un renard.",
-
-        "Le renard lui dit: \"Apprivoise-moi.\" Le petit prince ne comprenait pas. "
-        "\"Qu'est-ce que signifie apprivoiser?\" demanda-t-il.",
-
-        "\"C'est créer des liens,\" répondit le renard. "
-        "\"Tu deviens responsable de ce que tu as apprivoisé.\""
+        'Le renard lui dit: "Apprivoise-moi." Le petit prince ne comprenait pas. '
+        '"Qu\'est-ce que signifie apprivoiser?" demanda-t-il.',
+        '"C\'est créer des liens," répondit le renard. '
+        '"Tu deviens responsable de ce que tu as apprivoisé."',
     ]
 
 
@@ -230,12 +224,10 @@ def sample_embeddings() -> list[list[float]]:
         List of 1024-dimensional vectors for testing.
     """
     import random
+
     random.seed(42)
 
-    return [
-        [random.gauss(0, 1) for _ in range(1024)]
-        for _ in range(3)
-    ]
+    return [[random.gauss(0, 1) for _ in range(1024)] for _ in range(3)]
 
 
 @pytest.fixture
@@ -245,18 +237,10 @@ def sample_search_results() -> list[dict]:
         {
             "id": "doc-1",
             "score": 0.92,
-            "payload": {"text": "Le renard lui dit: \"Apprivoise-moi.\""}
+            "payload": {"text": 'Le renard lui dit: "Apprivoise-moi."'},
         },
-        {
-            "id": "doc-2",
-            "score": 0.87,
-            "payload": {"text": "C'est créer des liens."}
-        },
-        {
-            "id": "doc-3",
-            "score": 0.76,
-            "payload": {"text": "Tu deviens responsable."}
-        }
+        {"id": "doc-2", "score": 0.87, "payload": {"text": "C'est créer des liens."}},
+        {"id": "doc-3", "score": 0.76, "payload": {"text": "Tu deviens responsable."}},
     ]
 
 
@@ -286,10 +270,10 @@ def mock_embedding_response() -> dict:
         "object": "list",
         "data": [
             {"object": "embedding", "embedding": [0.1] * 1024, "index": 0},
-            {"object": "embedding", "embedding": [0.2] * 1024, "index": 1}
+            {"object": "embedding", "embedding": [0.2] * 1024, "index": 1},
         ],
         "model": "Qwen-Embedding",
-        "usage": {"prompt_tokens": 50, "total_tokens": 50}
+        "usage": {"prompt_tokens": 50, "total_tokens": 50},
     }
 
 
@@ -301,10 +285,10 @@ def mock_rerank_response() -> dict:
         "results": [
             {"index": 0, "relevance_score": 0.92},
             {"index": 2, "relevance_score": 0.87},
-            {"index": 1, "relevance_score": 0.76}
+            {"index": 1, "relevance_score": 0.76},
         ],
         "model": "Qwen-Reranker",
-        "usage": {"prompt_tokens": 100, "total_tokens": 100}
+        "usage": {"prompt_tokens": 100, "total_tokens": 100},
     }
 
 
@@ -316,19 +300,21 @@ def mock_generation_response() -> dict:
         "object": "chat.completion",
         "created": 1234567890,
         "model": "DeepSeek-R1",
-        "choices": [{
-            "index": 0,
-            "message": {
-                "role": "assistant",
-                "content": "Le renard est un personnage sage qui enseigne au Petit Prince."
-            },
-            "finish_reason": "stop"
-        }],
+        "choices": [
+            {
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": "Le renard est un personnage sage qui enseigne au Petit Prince.",
+                },
+                "finish_reason": "stop",
+            }
+        ],
         "usage": {
             "prompt_tokens": 1847,
             "completion_tokens": 234,
-            "total_tokens": 2081
-        }
+            "total_tokens": 2081,
+        },
     }
 
 
@@ -373,7 +359,7 @@ def mock_reranker() -> AsyncMock:
     mock = AsyncMock(spec=IReranker)
     mock.rerank.return_value = [
         MagicMock(text="doc1", score=0.92),
-        MagicMock(text="doc2", score=0.87)
+        MagicMock(text="doc2", score=0.87),
     ]
     return mock
 
@@ -419,19 +405,16 @@ def create_chat_request():
     Returns:
         Callable that creates ChatRequest instances.
     """
+
     def _create(
         messages: list[dict] | None = None,
         model: str = "petit-prince-rag",
-        stream: bool = False
+        stream: bool = False,
     ) -> dict:
         if messages is None:
             messages = [{"role": "user", "content": "Qui est le renard?"}]
 
-        return {
-            "model": model,
-            "messages": messages,
-            "stream": stream
-        }
+        return {"model": model, "messages": messages, "stream": stream}
 
     return _create
 
@@ -450,10 +433,7 @@ def large_text_corpus(temp_dir: Path) -> Path:
         Path to 1MB text file.
     """
     # Generate ~1MB of text
-    sentences = [
-        f"{fake.sentence()} " * 10
-        for _ in range(1000)
-    ]
+    sentences = [f"{fake.sentence()} " * 10 for _ in range(3000)]
     content = "\n".join(sentences)
 
     file_path = temp_dir / "large_corpus.txt"
