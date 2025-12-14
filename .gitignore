@@ -48,3 +48,22 @@ htmlcov/
 # OS
 .DS_Store
 Thumbs.db
+
+# Test coverage reports
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+.pytest_cache/
+.benchmarks/
+
+# Test artifacts
+.tox/
+.hypothesis/
+*.log
+
+# Quality reports
+pylint-report.txt
+bandit-report.json
+benchmark.json

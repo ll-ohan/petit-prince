@@ -1,0 +1,237 @@
+name: Tests & Quality Checks
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+
+jobs:
+  quality-wall:
+    name: Quality Wall (Black + Ruff + Mypy + Tests)
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🐍 Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+
+      - name: 📦 Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r requirements-test.txt
+
+      - name: 🎨 Black - Code Formatting
+        run: |
+          black --check src/ tests/
+        continue-on-error: false
+
+      - name: 🔍 Ruff - Linting
+        run: |
+          ruff check src/ tests/
+        continue-on-error: false
+
+      - name: 📝 Mypy - Type Checking
+        run: |
+          mypy src/
+        continue-on-error: false
+
+      - name: ✅ Pytest - Unit Tests
+        run: |
+          pytest -m unit --cov=src --cov-report=xml --cov-report=term-missing
+        continue-on-error: false
+
+      - name: 📊 Upload Coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./coverage.xml
+          flags: unittests
+          name: codecov-${{ matrix.python-version }}
+
+      - name: 💾 Archive coverage reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report-${{ matrix.python-version }}
+          path: htmlcov/
+          retention-days: 30
+
+  integration-tests:
+    name: Integration Tests (with services)
+    runs-on: ubuntu-latest
+    needs: quality-wall
+
+    services:
+      qdrant:
+        image: qdrant/qdrant:latest
+        ports:
+          - 6333:6333
+        options: >-
+          --health-cmd "curl -f http://localhost:6333/healthz || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🐍 Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: 'pip'
+
+      - name: 📦 Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r requirements-test.txt
+
+      - name: 🔧 Wait for Qdrant
+        run: |
+          timeout 30 bash -c 'until curl -f http://localhost:6333/healthz; do sleep 2; done'
+
+      - name: 🧪 Run Integration Tests
+        run: |
+          pytest -m integration --tb=short
+        env:
+          QDRANT__HOST: localhost
+          QDRANT__PORT: 6333
+
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    needs: quality-wall
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🐍 Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 📦 Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install safety bandit
+
+      - name: 🔒 Check for known vulnerabilities (Safety)
+        run: |
+          safety check --file requirements.txt --file requirements-test.txt
+        continue-on-error: true
+
+      - name: 🛡️ Security linting (Bandit)
+        run: |
+          bandit -r src/ -f json -o bandit-report.json
+        continue-on-error: true
+
+      - name: 💾 Upload security reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-reports
+          path: bandit-report.json
+          retention-days: 30
+
+  code-quality-metrics:
+    name: Code Quality Metrics
+    runs-on: ubuntu-latest
+    needs: quality-wall
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🐍 Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 📦 Install analysis tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install radon pylint
+
+      - name: 📊 Complexity Analysis (Radon)
+        run: |
+          echo "## Cyclomatic Complexity" >> $GITHUB_STEP_SUMMARY
+          radon cc src/ -a -s >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Maintainability Index" >> $GITHUB_STEP_SUMMARY
+          radon mi src/ -s >> $GITHUB_STEP_SUMMARY
+
+      - name: 🔍 Deep Analysis (Pylint)
+        run: |
+          pylint src/ --output-format=text --exit-zero > pylint-report.txt
+          cat pylint-report.txt
+        continue-on-error: true
+
+      - name: 💾 Upload quality reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-metrics
+          path: pylint-report.txt
+          retention-days: 30
+
+  performance-tests:
+    name: Performance Benchmarks
+    runs-on: ubuntu-latest
+    needs: quality-wall
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🐍 Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 📦 Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r requirements-test.txt
+
+      - name: 🚀 Run Performance Benchmarks
+        run: |
+          pytest -m performance --benchmark-only --benchmark-json=benchmark.json
+
+      - name: 📈 Store benchmark result
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          tool: 'pytest'
+          output-file-path: benchmark.json
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          auto-push: true
+
+  summary:
+    name: Quality Summary
+    runs-on: ubuntu-latest
+    needs: [quality-wall, integration-tests, security-scan, code-quality-metrics]
+    if: always()
+
+    steps:
+      - name: 📊 Generate Summary
+        run: |
+          echo "## 🎯 Quality Wall Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Quality Wall | ${{ needs.quality-wall.result == 'success' && '✅ PASSED' || '❌ FAILED' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Integration Tests | ${{ needs.integration-tests.result == 'success' && '✅ PASSED' || '⚠️ SKIPPED/FAILED' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Security Scan | ${{ needs.security-scan.result == 'success' && '✅ PASSED' || '⚠️ WARNING' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Quality Metrics | ${{ needs.code-quality-metrics.result == 'success' && '✅ PASSED' || '⚠️ WARNING' }} |" >> $GITHUB_STEP_SUMMARY
