@@ -1,41 +1,6 @@
-# Python
 __pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-*.egg-info/
-dist/
+*.py[oc]
 build/
-
-# Virtual environments
-venv/
-env/
-.venv/
-
-# IDEs
-.vscode/
-.idea/
-*.swp
-
-# Environment
-.env
-
-# Git
-.git/
-.gitignore
-
-# Tests
-tests/
-.pytest_cache/
-.coverage
-htmlcov/
-
-# Documentation
-*.md
-docs/
-
-# Docker
-Dockerfile
-docker-compose.yml
-.dockerignore
+dist/
+wheels/
+*.egg-info

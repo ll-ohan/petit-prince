@@ -1,43 +1,28 @@
-# Multi-stage build for Le Petit Prince RAG
-FROM python:3.11-slim as base
+FROM python:3.13-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    && rm -rf /var/lib/apt/lists/*
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
-# Copy requirements
-COPY requirements.txt .
+COPY pyproject.toml ./
+COPY uv.lock ./
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+COPY pyproject.toml pyproject.toml
+COPY gateway/ gateway/
+COPY mcp_server/ mcp_server/
+COPY indexer/ indexer/
+COPY embeddings/ embeddings/
+COPY prompts/ prompts/
+COPY qdrant_manager/ qdrant_manager/
+COPY searxng/ searxng/
 
-# Production stage
-FROM python:3.11-slim
+COPY uv.lock uv.lock
 
-WORKDIR /app
+RUN uv sync --frozen --no-dev || uv sync --no-dev
 
-# Copy dependencies from base
-COPY --from=base /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
-COPY --from=base /usr/local/bin /usr/local/bin
+EXPOSE 8000 8001
 
-# Copy application code
-COPY src/ src/
-COPY config.yml .
-COPY var/ var/
-
-# Create non-root user
-RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
-USER appuser
-
-# Expose port
-EXPOSE 8000
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD python -c "import httpx; httpx.get('http://localhost:8000/health', timeout=5)"
-
-# Run application
-CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["sh", "-c", "exec sleep infinity"]

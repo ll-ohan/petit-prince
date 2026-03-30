@@ -1,0 +1,30 @@
+@import "tailwindcss";
+
+:root {
+  --background: #EAE3D4;
+  --foreground: #494949;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@theme {
+  /* Palette Le Petit Prince */
+  --color-sand: #EAE3D4;
+  --color-assistant: #B0A190;
+  --color-user-bubble: #A0A0A0;
+  --color-dark: #494949;
+  --color-accent: #698394;
+  --color-citation: #E8D7CA;
+  --color-warm: #966c3d;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}

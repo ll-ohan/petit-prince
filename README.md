@@ -1,146 +1,144 @@
-# Le Petit Prince RAG Pipeline
+# Le Petit Prince — Chatbot RAG + MCP
 
-Système RAG (Retrieval-Augmented Generation) spécialisé dans "Le Petit Prince" d'Antoine de Saint-Exupéry.
+Ce chatbot permet d'interroger l'œuvre *Le Petit Prince* d'Antoine de Saint-Exupéry via une interface conversationnelle moderne. Il repose sur une architecture **RAG** (Retrieval-Augmented Generation) couplée au protocole **MCP** (Model Context Protocol), avec un LLM configurable via API compatible OpenAI.
+
+---
 
 ## Architecture
 
-Architecture SOLID en Python avec FastAPI, communicant avec llama.cpp (embeddings, reranking, génération) et Qdrant (vector store).
+```
+Frontend (Next.js)
+    │  HTTP / SSE
+    ▼
+Gateway (FastAPI)          ←→  LLM endpoint (Ollama, vLLM, OpenRouter…)
+    │  MCP SSE
+    ▼
+MCP Server (FastAPI)
+    ├── tool: retriever    →  Qdrant (vecteurs SPLADE)
+    └── tool: web_search   →  SearXNG (domaines autorisés)
+                                │
+                       Indexer ─┘  (pipeline one-shot)
+                       Embeddings  (SPLADE V3)
+```
 
-## Installation
+Le système est découpé en modules Python indépendants (workspace `uv`) et une interface React. Chaque module a une responsabilité claire et communique via API REST ou MCP.
+
+---
+
+## Modules
+
+| Module | Rôle | Port |
+|--------|------|------|
+| [`embeddings/`](./embeddings/) | Encodeur sparse SPLADE V3 (partagé) | — |
+| [`indexer/`](./indexer/) | Pipeline d'indexation du livre dans Qdrant | — |
+| [`qdrant_manager/`](./qdrant_manager/) | Client Qdrant (collection, upsert, recherche) | — |
+| [`mcp_server/`](./mcp_server/) | Serveur MCP exposant les tools au LLM | 8001 |
+| [`gateway/`](./gateway/) | Orchestrateur API (chat, streaming, tool loop) | 8000 |
+| [`prompts/`](./prompts/) | Registre centralisé des prompts (YAML) | — |
+| [`frontend/`](./frontend/) | Interface utilisateur React / Next.js | 3000 |
+
+---
+
+## Démarrage rapide
 
 ### Prérequis
 
-- Python 3.11+
-- llama.cpp server en cours d'exécution
-- Qdrant en cours d'exécution
-- Fichier texte du Petit Prince dans `var/data/book.txt`
-
-### Installation locale
-
-```bash
-# Créer un environnement virtuel
-python -m venv venv
-source venv/bin/activate  # Linux/Mac
-# ou
-venv\Scripts\activate  # Windows
-
-# Installer les dépendances
-pip install -r requirements.txt
-
-# Copier et configurer les variables d'environnement
-cp .env.example .env
-# Éditer .env selon votre configuration
-```
+- Docker + Docker Compose
+- Un modèle accessible via une API compatible OpenAI (Ollama, vLLM, llama.cpp, OpenRouter…)
+- Un token HuggingFace pour le téléchargement de SPLADE V3
 
 ### Configuration
 
-La configuration suit la priorité : **ENV > .env > config.yml**
-
-Éditer [config.yml](config.yml) pour les valeurs par défaut.
-
-## Utilisation
-
-### Démarrer le serveur
-
 ```bash
-uvicorn src.main:app --host 0.0.0.0 --port 8000
+cp .env.example .env
+# Éditer .env : LLM_BASE_URL, LLM_MODEL, HF_TOKEN
 ```
 
-### Indexer le livre
+### Lancement des services
 
 ```bash
-curl -X POST http://localhost:8000/api/init
+docker compose up -d
 ```
 
-### Chat (mode bloquant)
+### Indexation du livre
 
 ```bash
-curl -X POST http://localhost:8000/api/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{
-    "messages": [
-      {"role": "user", "content": "Qui est le petit prince?"}
-    ]
-  }'
+# Placer le fichier texte du livre dans data/
+docker compose run --rm indexer python -m indexer --source /data/le_petit_prince.txt --reset
 ```
 
-### Chat (mode streaming)
+### Accès
+
+- Interface : http://localhost:3000
+- Gateway API : http://localhost:8000
+- MCP Server : http://localhost:8001
+- Qdrant dashboard : http://localhost:6333/dashboard
+
+---
+
+## Fonctionnalités
+
+- **Chat persistant / éphémère** — historique local via IndexedDB ou session en mémoire
+- **Retrieval sémantique** — recherche sparse SPLADE V3 dans les extraits du livre
+- **Web search ciblée** — restreinte à `monpetitprince.fr` et `fr.wikipedia.org` via SearXNG
+- **Streaming avec thinking** — les phases de réflexion du LLM et les appels outils sont streamés en temps réel
+- **Citations inline** — chaque réponse est sourcée avec des références numérotées `[1]`, `[2]`…
+- **Titrage automatique** — titre de conversation généré silencieusement après le premier échange
+
+---
+
+## Stack technique
+
+**Backend**
+- Python 3.13, uv (workspace monorepo)
+- FastAPI, Pydantic v2
+- `sentence-transformers` (SPLADE V3), PyTorch
+- `qdrant-client`, `mcp` (Model Context Protocol)
+- SearXNG (moteur de recherche auto-hébergé)
+
+**Frontend**
+- Next.js 16 (App Router), React 19, TypeScript
+- Tailwind CSS v4, Zustand, `idb`
+
+---
+
+## Variables d'environnement
+
+Voir [`.env.example`](./.env.example) pour la liste complète des variables avec leurs descriptions.
+
+Les variables essentielles :
 
 ```bash
-curl -X POST http://localhost:8000/api/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -N \
-  -d '{
-    "messages": [
-      {"role": "user", "content": "Qui est le renard?"}
-    ],
-    "stream": true
-  }'
+LLM_BASE_URL=http://localhost:11434/v1
+LLM_MODEL=mistral-nemo:latest
+HF_TOKEN=hf_...
+QDRANT_URL=http://qdrant:6333
+SEARCH_ENGINE_URL=http://searxng:8080
+NEXT_PUBLIC_ORCHESTRATOR_URL=http://localhost:8000
 ```
 
-### Métriques étendues
+---
 
-```bash
-curl -X POST http://localhost:8000/api/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -H "X-Include-Metrics: true" \
-  -d '{
-    "messages": [
-      {"role": "user", "content": "Quelle est la leçon du renard?"}
-    ]
-  }'
+## Structure du dépôt
+
+```
+.
+├── embeddings/          # Encodeur SPLADE V3
+├── indexer/             # Pipeline d'indexation
+├── qdrant_manager/      # Client vector DB
+├── mcp_server/          # Serveur MCP (tools)
+├── gateway/             # Orchestrateur API
+├── prompts/             # Prompts centralisés
+├── frontend/            # Interface utilisateur
+├── data/                # Sources du livre (non versionné)
+├── searxng/             # Configuration SearXNG
+├── compose.yml
+├── Dockerfile
+└── .env.example
 ```
 
-## Tests
+---
 
-```bash
-# Tests unitaires
-pytest tests/unit -v
+## Auteur
 
-# Tests d'intégration (nécessite les services)
-pytest tests/integration -v
-
-# Coverage
-pytest --cov=src --cov-report=html
-```
-
-## Docker
-
-```bash
-# Build et démarrage
-docker-compose up -d
-
-# Logs
-docker-compose logs -f petit-prince-rag
-
-# Arrêt
-docker-compose down
-```
-
-## Interface Web
-
-Une interface web minimaliste est disponible sur http://localhost après le démarrage avec Docker Compose.
-
-**Fonctionnalités :**
-- 💬 Chat interactif avec streaming en temps réel
-- 📊 Métriques de performance et visualisation des sources
-- 🔧 Configuration de l'API en temps réel
-- 🗑️ Gestion de la conversation (sauvegarde locale)
-- 🔄 Initialisation de l'index depuis l'interface
-- 🌓 Mode debug avec informations détaillées
-
-**Technologies :** HTML/CSS/JavaScript vanilla (zéro dépendances)
-
-## Structure du projet
-
-Voir [CLAUDE.md](CLAUDE.md) pour la documentation complète de l'architecture.
-
-## Endpoints
-
-- `GET /health` - Health check
-- `POST /api/init` - Réindexation
-- `POST /api/v1/chat/completions` - Chat (compatible OpenAI)
-
-## License
-
-MIT
+Lohan — Projet Étudiant 2026

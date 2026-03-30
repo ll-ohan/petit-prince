@@ -1,0 +1,32 @@
+use_default_settings: true
+
+server:
+  port: 8080
+  bind_address: "0.0.0.0"
+  secret_key: "petit_prince_rag_secret_key" # Requis par SearXNG pour démarrer
+  base_url: "http://searxng:8080/"
+
+search:
+  safe_search: 0 # 0=None, 1=Moderate, 2=Strict
+  autocomplete: ""
+  default_lang: "fr"
+  formats:
+    - html
+    - json # pour client MCP
+
+engines:
+  - name: google
+    engine: google
+    shortcut: g
+    disabled: false
+  
+  - name: duckduckgo
+    engine: duckduckgo
+    shortcut: ddg
+    disabled: false
+    
+  - name: wikipedia
+    engine: wikipedia
+    shortcut: w
+    base_url: 'https://fr.wikipedia.org/'
+    disabled: false
