@@ -104,6 +104,7 @@ def _process_think_in_buffer(state: _StreamState) -> tuple[list[str], bool]:
             events.append(_sse("thinking", {"content": think_content}))
         state.text_buffer = rest
         state.in_think_block = False
+        return events, False
     else:
         think_content = state.text_buffer.replace("<think>", "")
         if think_content:
@@ -207,11 +208,12 @@ def _process_content_chunk(content: str, state: _StreamState) -> list[str]:
 
 def _drain_buffer(state: _StreamState) -> list[str]:
     """Flush whatever remains in the buffer after the stream ends."""
+    events = _process_inline_tool_calls(state)
     if state.text_buffer and not state.text_buffer.startswith("[TOOL_CALLS]"):
         content, state.text_buffer = state.text_buffer, ""
         state.partial_text.append(content)
-        return [_text_event(content)]
-    return []
+        events.append(_text_event(content))
+    return events
 
 
 def _prepare_messages(request: ChatRequest) -> list[dict[str, Any]]:
